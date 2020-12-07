@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 const lock = require('@yarnpkg/lockfile');
 const cp = require('child_process');
 const fs = require('fs');
