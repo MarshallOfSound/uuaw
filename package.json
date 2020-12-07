@@ -1,0 +1,34 @@
+{
+  "name": "uuaw",
+  "version": "1.0.0",
+  "description": "Updates deep yarn dependencies to the latest possible versions",
+  "main": "src/index.js",
+  "bin": {
+    "uuaw": "src/index.js"
+  },
+  "author": {
+    "name": "Samuel Attard"
+  },
+  "files": [
+    "src"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@yarnpkg/lockfile": "^1.1.0"
+  },
+  "devDependencies": {
+    "husky": "^4.3.5",
+    "lint-staged": "^10.5.3",
+    "prettier": "^2.2.1"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  },
+  "lint-staged": {
+    "*.js": [
+      "prettier --write"
+    ]
+  }
+}
