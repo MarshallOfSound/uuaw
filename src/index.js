@@ -5,9 +5,14 @@ const cp = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+const packageToUpdate = process.argv[2];
+if (packageToUpdate === '--audit') {
+  require('./audit');
+  process.exit(0);
+}
+
 const lockFilePath = path.resolve(process.cwd(), 'yarn.lock');
 const lockFile = fs.readFileSync(lockFilePath, 'utf8');
-const packageToUpdate = process.argv[2];
 if (!packageToUpdate) {
   console.error('Usage: uuaw [package]');
   process.exit(1);
