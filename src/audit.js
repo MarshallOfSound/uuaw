@@ -110,10 +110,10 @@ while (true) {
   lockEntryTries: for (const [entryIndex, entry] of lockEntryChain.entries()) {
     const attemptIdent = chalk.magenta(`[${entryIndex + 1}/${lockEntryChain.length}]`);
     console.log(attemptIdent, 'Trying from:', chalk.cyan(entry.packageRef));
-    const chainToResolve = backwardsChain.slice(0, entryIndex + 1);
+    const chainToResolve = backwardsChain.slice(0, entryIndex + 1).reverse();
     let newLatest = null;
     let packageRef = entry.packageRef;
-    for (const package of chainToResolve) {
+    for (const [packageIndex] of chainToResolve.entries()) {
       process.stdout.write(`    Resolving: ${chalk.cyan(packageRef)}`);
       newLatest = latestInRange(packageRef);
       process.stdout.write(`${chalk.grey(' --> ')}${chalk.yellow(newLatest.version)}\n`);
@@ -123,17 +123,34 @@ while (true) {
         ...(newLatest.optionalDependencies || {}),
         ...(newLatest.peerDependencies || {}),
       };
-      packageRef = `${package}@${deps[package]}`;
+      const package = chainToResolve[packageIndex + 1];
+      if (package) {
+        if (deps[package]) {
+          packageRef = `${package}@${deps[package]}`;
+        } else {
+          packageRef = null;
+          break;
+        }
+      }
     }
-    if (newLatest) {
-      if (semver.satisfies(newLatest.version, neededRange)) {
-        console.log(
-          attemptIdent,
-          'Updating chain to latest starting at:',
-          chalk.green(entry.packageRef),
-          'results in a patched version:',
-          chalk.green(`${newLatest.name}@${newLatest.version}`),
-        );
+    if (newLatest || !packageRef) {
+      if (!packageRef || semver.satisfies(newLatest.version, neededRange)) {
+        if (packageRef) {
+          console.log(
+            attemptIdent,
+            'Updating chain to latest starting at:',
+            chalk.green(entry.packageRef),
+            'results in a patched version:',
+            chalk.green(`${newLatest.name}@${newLatest.version}`),
+          );
+        } else {
+          console.log(
+            attemptIdent,
+            'Updating chain to latest starting at:',
+            chalk.green(entry.packageRef),
+            `results in ${chalk.bold('cutting')} the known chain`,
+          );
+        }
         console.log(attemptIdent, `Running ${chalk.blue('yarn install')} now\n`);
 
         const refsToFreshResolve = lockEntryChain.slice(0, entryIndex + 1).map((p) => p.packageRef);
