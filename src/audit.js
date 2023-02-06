@@ -14,17 +14,56 @@ if (packageJSON && packageJSON.engines && packageJSON.engines.yarn) {
 }
 
 while (true) {
-  const r = cp.spawnSync('npx', [`yarn@${yarnVersion}`, 'audit', '--json', '--no-progress'], {
-    cwd: process.cwd(),
-    stdio: 'pipe',
-  });
+  let advisories;
+  if (semver.gt(yarnVersion, '2.0.0')) {
+    const r = cp.spawnSync('npx', [
+      `yarn@${yarnVersion}`,
+      'npm',
+      'audit',
+      '--all',
+      '--recursive',
+      '--json',
+    ]);
 
-  const rawAudit = r.stdout.toString();
-  const auditEntries = rawAudit
-    .split(/\n/g)
-    .filter(Boolean)
-    .map((s) => JSON.parse(s));
-  const advisories = auditEntries.filter((entry) => entry.type === 'auditAdvisory');
+    const rawAudit = r.stdout.toString();
+    const auditObject = JSON.parse(rawAudit);
+    const auditAdvisories = auditObject.advisories;
+
+    advisories = [];
+    for (const key of Object.keys(auditAdvisories)) {
+      const auditAdvisory = auditAdvisories[key];
+
+      for (const finding of auditAdvisory.findings) {
+        for (const path of finding.paths) {
+          advisories.push({
+            data: {
+              resolution: {
+                path: path,
+              },
+              advisory: {
+                github_advisory_id: auditAdvisory.github_advisory_id,
+                cves: auditAdvisory.cves,
+                title: auditAdvisory.title,
+                patched_versions: auditAdvisory.patched_versions,
+              },
+            },
+          });
+        }
+      }
+    }
+  } else {
+    const r = cp.spawnSync('npx', [`yarn@${yarnVersion}`, 'audit', '--json', '--no-progress'], {
+      cwd: process.cwd(),
+      stdio: 'pipe',
+    });
+
+    const rawAudit = r.stdout.toString();
+    const auditEntries = rawAudit
+      .split(/\n/g)
+      .filter(Boolean)
+      .map((s) => JSON.parse(s));
+    advisories = auditEntries.filter((entry) => entry.type === 'auditAdvisory');
+  }
   if (advisories.length === 0) {
     console.log(chalk.green(chalk.bold("Audit is clean, looking good cap'n")));
     process.exit(0);
@@ -45,7 +84,6 @@ while (true) {
   const chain = resolution.path.split('>');
   const packageName = chain[chain.length - 1];
   const neededRange = advisory.patched_versions;
-  const badRange = advisory.vulnerable_versions;
 
   // Let's resolve the dependency chain from the bad package up to the root package.json
   const lockEntryChain = [];
