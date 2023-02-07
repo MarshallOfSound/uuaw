@@ -5,15 +5,15 @@ const fs = require('fs');
 const path = require('path');
 const semver = require('semver');
 
-const packageJSON = JSON.parse(
-  fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8'),
-);
-let yarnVersion = 'latest';
-if (packageJSON && packageJSON.engines && packageJSON.engines.yarn) {
-  yarnVersion = packageJSON.engines.yarn;
-}
-
 while (true) {
+  const packageJSON = JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8'),
+  );
+  let yarnVersion = 'latest';
+  if (packageJSON && packageJSON.engines && packageJSON.engines.yarn) {
+    yarnVersion = packageJSON.engines.yarn;
+  }
+
   const r = cp.spawnSync('npx', [`yarn@${yarnVersion}`, 'audit', '--json', '--no-progress'], {
     cwd: process.cwd(),
     stdio: 'pipe',
@@ -30,6 +30,7 @@ while (true) {
     process.exit(0);
   }
 
+  const packageJsonPath = path.resolve(process.cwd(), 'package.json');
   const lockFilePath = path.resolve(process.cwd(), 'yarn.lock');
   const lockFile = fs.readFileSync(lockFilePath, 'utf8');
   const result = lock.parse(lockFile);
@@ -64,19 +65,23 @@ while (true) {
     }
     dependencies = lockEntry.dependencies;
     lockEntryChain.push({
+      package,
       packageRef,
       lockEntry,
     });
   }
 
+  const rootPackage = lockEntryChain[0].package;
+
   function latestInRange(packageRef) {
     const showResult = cp.spawnSync('npm', ['show', packageRef, '--json'], {
       cwd: process.cwd(),
       stdio: 'pipe',
+      maxBuffer: 1024 * 1024 * 20,
     });
 
     if (showResult.status !== 0) {
-      console.error('Failed to fetch latest version patching:', packageRef);
+      console.error('\nFailed to fetch latest version patching:', packageRef);
       process.exit(showResult.status);
     }
 
@@ -85,6 +90,26 @@ while (true) {
       return info[info.length - 1];
     }
     return info;
+  }
+
+  if (process.argv.includes('--unsafe')) {
+    // As a last resort we try every major version between vCurrent and vLatest
+    // This may not be semver-safe but it let's us indicate the minimum required
+    // major bump to fix the underlying advisory
+    const latest = latestInRange(`${rootPackage}@latest`);
+    const currentLatest = latestInRange(lockEntryChain[0].packageRef);
+    const currentMajor = semver.parse(currentLatest.version).major;
+    const latestMajor = semver.parse(latest.version).major;
+
+    for (let newMajor = currentMajor + 1; newMajor <= latestMajor; newMajor++) {
+      lockEntryChain.unshift({
+        unsafe: true,
+        unsafeNewRange: `^${newMajor}.0.0`,
+        package: lockEntryChain[0].package,
+        packageRef: `${lockEntryChain[0].package}@^${newMajor}.0.0`,
+        lockEntry: lockEntryChain[0].lockEntry,
+      });
+    }
   }
 
   // Flip the order of the lock entry chain, we want to start with the deepest dependency and work our way up
@@ -108,7 +133,11 @@ while (true) {
   // For each entry:
   // -- Does bumping it to the latest satisfying version result in a "safe" version of the nested dependency being available
   lockEntryTries: for (const [entryIndex, entry] of lockEntryChain.entries()) {
-    const attemptIdent = chalk.magenta(`[${entryIndex + 1}/${lockEntryChain.length}]`);
+    const attemptIdent = chalk.magenta(
+      `[${entryIndex + 1}/${lockEntryChain.length}]${
+        entry.unsafe ? chalk.red(chalk.bold(' [UNSAFE]')) : ''
+      }`,
+    );
     console.log(attemptIdent, 'Trying from:', chalk.cyan(entry.packageRef));
     const chainToResolve = backwardsChain.slice(0, entryIndex + 1).reverse();
     let newLatest = null;
@@ -151,14 +180,44 @@ while (true) {
             `results in ${chalk.bold('cutting')} the known chain`,
           );
         }
-        console.log(attemptIdent, `Running ${chalk.blue('yarn install')} now\n`);
+        if (entry.unsafe) {
+          console.warn(
+            attemptIdent,
+            chalk.yellow(
+              `Updating top level dependency ${entry.package} to range ${
+                entry.packageRef
+              } is ${chalk.bold('not')} a semver-safe operation but it does fix this advisory`,
+            ),
+          );
 
-        const refsToFreshResolve = lockEntryChain.slice(0, entryIndex + 1).map((p) => p.packageRef);
-        for (const refToFreshResolve of refsToFreshResolve) {
-          delete result.object[refToFreshResolve];
+          for (const depKey of [
+            'dependencies',
+            'devDependencies',
+            'optionalDependencies',
+            'peerDependencies',
+          ]) {
+            const deps = packageJSON[depKey] || {};
+
+            for (const dep of Object.keys(deps)) {
+              if (dep === entry.package) {
+                deps[dep] = entry.unsafeNewRange;
+              }
+            }
+          }
+
+          fs.writeFileSync(packageJsonPath, JSON.stringify(packageJSON, null, 2));
+        } else {
+          const refsToFreshResolve = lockEntryChain
+            .slice(0, entryIndex + 1)
+            .map((p) => p.packageRef);
+          for (const refToFreshResolve of refsToFreshResolve) {
+            delete result.object[refToFreshResolve];
+          }
+
+          fs.writeFileSync(lockFilePath, lock.stringify(result.object));
         }
 
-        fs.writeFileSync(lockFilePath, lock.stringify(result.object));
+        console.log(attemptIdent, `Running ${chalk.blue('yarn install')} now\n`);
 
         // Run with --ignore-scripts for speed
         const r = cp.spawnSync('npx', [`yarn@${yarnVersion}`, '--ignore-scripts'], {
@@ -181,7 +240,6 @@ while (true) {
 
   if (!success) {
     console.error(
-      attemptIdent,
       chalk.red('No update chain could be found to get', packageName, 'into', neededRange),
     );
     process.exit(1);
