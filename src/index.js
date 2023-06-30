@@ -41,10 +41,14 @@ if (packageJSON && packageJSON.engines && packageJSON.engines.yarn) {
   yarnVersion = packageJSON.engines.yarn;
 }
 
-const r = cp.spawnSync('npx', [`yarn@${yarnVersion}`], {
+const npxCommand = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const r = cp.spawnSync(npxCommand, [`yarn@${yarnVersion}`], {
   cwd: process.cwd(),
   stdio: 'inherit',
 });
 if (r.status !== 0) {
+  if (r.error) {
+    console.error(r.error);
+  }
   process.exit(r.status);
 }
