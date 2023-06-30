@@ -17,6 +17,7 @@ while (true) {
   const r = cp.spawnSync('npx', [`yarn@${yarnVersion}`, 'audit', '--json', '--no-progress'], {
     cwd: process.cwd(),
     stdio: 'pipe',
+    maxBuffer: 1024 * 1024 * 20,
   });
 
   const rawAudit = r.stdout.toString();
