@@ -55,7 +55,6 @@ while (true) {
     ...(packageJSON.dependencies || {}),
     ...(packageJSON.devDependencies || {}),
     ...(packageJSON.optionalDependencies || {}),
-    ...(packageJSON.peerDependencies || {}),
   };
   for (const package of chain) {
     const packageRef = `${package}@${dependencies[package]}`;
@@ -64,7 +63,7 @@ while (true) {
       console.error(`Failed to trace dependency chain in lockfile for ${package}`);
       process.exit(1);
     }
-    dependencies = lockEntry.dependencies;
+    dependencies = { ...lockEntry.dependencies, ...(lockEntry.optionalDependencies || {}) };
     lockEntryChain.push({
       package,
       packageRef,
