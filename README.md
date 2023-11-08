@@ -23,3 +23,16 @@ dependencies to fix all issues reported by `yarn audit`.
 
 This command is super experimental and is known to work well for the Green Path
 and will stumble quite quickly in the complicated cases.
+
+### Updating Specific Dependencies with a Custom Chain and VersionRange
+
+console.log('npx uuaw --customChain <chain> <neededRange> (--unsafe || ``)');
+
+```bash
+npx uuaw --customChain "package>chain>to>dependency" ">=2.0.0" (--unsafe || ``)
+```
+
+Requires a valid chain of dependencies and a valid version range. This can be found by running `yarn why <dependency>`. The version range is the version range you want to update to.
+
+
+Uses the same update logic as --audit, but only updates the specified dependency
