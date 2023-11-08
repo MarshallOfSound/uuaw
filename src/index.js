@@ -11,6 +11,11 @@ if (packageToUpdate === '--audit') {
   process.exit(0);
 }
 
+if (packageToUpdate === '--customChain') {
+  require('./customChain');
+  process.exit(0);
+}
+
 const lockFilePath = path.resolve(process.cwd(), 'yarn.lock');
 const lockFile = fs.readFileSync(lockFilePath, 'utf8');
 if (!packageToUpdate) {
