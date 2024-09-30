@@ -45,6 +45,7 @@ const npxCommand = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const r = cp.spawnSync(npxCommand, [`yarn@${yarnVersion}`], {
   cwd: process.cwd(),
   stdio: 'inherit',
+  shell: process.platform === 'win32',
 });
 if (r.status !== 0) {
   if (r.error) {
